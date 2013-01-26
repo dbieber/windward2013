@@ -18,16 +18,17 @@ import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.*;
 
 /**
- * The sample C# AI. Start with this project but write your own code as this is a very simplistic implementation of the AI.
+ * The sample Java AI. Start with this project but write your own code as this is a very simplistic implementation of the AI.
  */
 public class MyPlayerBrain implements net.windward.Windwardopolis.AI.IPlayerAI {
     // bugbug - put your team name here.
-    private static String NAME = "James Gosling";
+    private static String NAME = "Orange Black Tree";
 
     // bugbug - put your school name here. Must be 11 letters or less (ie use MIT, not Massachussets Institute of Technology).
-    public static String SCHOOL = "Windward U.";
+    public static String SCHOOL = "Princeton";
 
     /**
      * The name of the player.
@@ -46,6 +47,11 @@ public class MyPlayerBrain implements net.windward.Windwardopolis.AI.IPlayerAI {
      * The game map.
      */
     private Map privateGameMap;
+    private Path[][][] j2jPaths; // junction to junction paths of tiles [start][end] gives list of paths
+    private Path[][][] d2dPaths; // destination to destination paths of junctions [start][end] gives list of paths
+
+    private ArrayList<Passenger> myPickup;
+    private ArrayList<Point> myPath;
 
     public final Map getGameMap() {
         return privateGameMap;
@@ -121,7 +127,7 @@ public class MyPlayerBrain implements net.windward.Windwardopolis.AI.IPlayerAI {
     public final byte[] getAvatar() {
         try {
             // open image
-            File file = new File(getClass().getResource("/net/windward/Windwardopolis/res/MyAvatar.png").getFile());
+            File file = new File(getClass().getResource("/net/windward/Windwardopolis/res/OBTavatar.png").getFile());
 
             FileInputStream fisAvatar = new FileInputStream(file);
             byte [] avatar = new byte[fisAvatar.available()];
@@ -156,12 +162,69 @@ public class MyPlayerBrain implements net.windward.Windwardopolis.AI.IPlayerAI {
             sendOrders = ordersEvent;
 
             java.util.ArrayList<Passenger> pickup = AllPickups(me, passengers);
+            findPaths();
 
             // get the path from where we are to the dest.
             java.util.ArrayList<Point> path = CalculatePathPlus1(me, pickup.get(0).getLobby().getBusStop());
             sendOrders.invoke("ready", path, pickup);
         } catch (RuntimeException ex) {
             ex.printStackTrace();
+        }
+    }
+
+    private Path whatNext() {
+        if (getMe().getLimo().getPassenger() == null) {
+            figureOutWhoToPickUp();
+            pickThemUp();
+            return thePath;
+        } else {
+            dropThemOff();
+            return thePath;
+        }
+    }
+
+    private void findPaths() {
+        findPathsOfTiles();
+        findPathsOfJunctions();
+    }
+
+
+    private void findPathsOfTiles() {
+        // store junction -> junction costs
+        // j2jPaths
+
+        ArrayList<Point> junctions;
+
+        for (int i = 0; i < junctions.size(); i++) {
+            // performBFS(i);
+            Queue<Point> frontier = new Queue<Point>();
+            frontier.add(junctions.get(i));
+            while (!frontier.isEmpty()) {
+                Point current = frontier.poll();
+                if (isJunction(current)) {
+                    addPathToJunction;
+                } else {
+                    
+                }
+            }
+        }
+    }
+
+    private void findPathsOfJunctions() {
+        // store destination -> destination costs
+        // d2dPaths
+
+        ArrayList<Point> junctions;
+
+        int[][] bestCosts;
+        for (int i = 0; i < junctions.size(); i++) {
+            for (int j = 0; j < junctions.size(); j++) {
+                for (int k = 0; k < junctions.size(); k++) {
+                    if (bestCosts[i][k] + bestCosts[k][j] < bestCosts[i][j]) {
+                        updateBestCost(i,j);
+                    }
+                }
+            }
         }
     }
 
@@ -191,6 +254,11 @@ public class MyPlayerBrain implements net.windward.Windwardopolis.AI.IPlayerAI {
             java.util.ArrayList<Passenger> pickup = new java.util.ArrayList<Passenger>();
             switch (status) {
                 case UPDATE:
+                    // where's the next intersection?
+                    // what are some good people to pick up?
+                    // let's figure out the path to them
+                    // unless we're already driving them. then let's drop them off.
+
                     return;
                 case NO_PATH:
                 case PASSENGER_NO_ACTION:
