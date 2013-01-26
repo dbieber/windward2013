@@ -128,7 +128,7 @@ public class MyPlayerBrain implements net.windward.Windwardopolis.AI.IPlayerAI {
     public final byte[] getAvatar() {
         try {
             // open image
-            File file = new File(getClass().getResource("/net/windward/Windwardopolis/res/OBTavatar.png").getFile());
+            File file = new File(getClass().getResource("/net/windward/Windwardopolis/res/MyAvatar.png").getFile());
 
             FileInputStream fisAvatar = new FileInputStream(file);
             byte [] avatar = new byte[fisAvatar.available()];
