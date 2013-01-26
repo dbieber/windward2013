@@ -4,10 +4,8 @@ package net.windward.Windwardopolis.AI;
 // Created by Windward Studios, Inc. (www.windward.net). No copyright claimed - do anything you want with this code.
 
 
-import net.windward.Windwardopolis.api.Company;
+import net.windward.Windwardopolis.api.*;
 import net.windward.Windwardopolis.api.Map;
-import net.windward.Windwardopolis.api.Passenger;
-import net.windward.Windwardopolis.api.Player;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
@@ -29,6 +27,7 @@ public class MyPlayerBrain implements net.windward.Windwardopolis.AI.IPlayerAI {
 
     // bugbug - put your school name here. Must be 11 letters or less (ie use MIT, not Massachussets Institute of Technology).
     public static String SCHOOL = "Princeton";
+    private static final double ACCELERATION = 0.1;
 
     /**
      * The name of the player.
@@ -47,11 +46,13 @@ public class MyPlayerBrain implements net.windward.Windwardopolis.AI.IPlayerAI {
      * The game map.
      */
     private Map privateGameMap;
-    private Path[][][] j2jPaths; // junction to junction paths of tiles [start][end] gives list of paths
-    private Path[][][] d2dPaths; // destination to destination paths of junctions [start][end] gives list of paths
+    private ArrayList<Path>[][] j2jPaths; // junction to junction paths of tiles [start][end] gives list of paths
+    private ArrayList<Path>[][] d2dPaths; // destination to destination paths of junctions [start][end] gives list of paths
 
     private ArrayList<Passenger> myPickup;
     private ArrayList<Point> myPath;
+
+    private ArrayList<Point> junctions;
 
     public final Map getGameMap() {
         return privateGameMap;
@@ -173,56 +174,191 @@ public class MyPlayerBrain implements net.windward.Windwardopolis.AI.IPlayerAI {
     }
 
     private Path whatNext() {
-        if (getMe().getLimo().getPassenger() == null) {
-            figureOutWhoToPickUp();
-            pickThemUp();
-            return thePath;
-        } else {
-            dropThemOff();
-            return thePath;
-        }
+//        if (getMe().getLimo().getPassenger() == null) {
+//            figureOutWhoToPickUp();
+//            pickThemUp();
+//            return thePath;
+//        } else {
+//            dropThemOff();
+//            return thePath;
+//        }
+        return null;
     }
 
     private void findPaths() {
+        findJunctions();
         findPathsOfTiles();
         findPathsOfJunctions();
     }
 
+    private void costBetween(Point p1, Point p2) {
+
+    }
+
+    private void findJunctions() {
+        junctions = new ArrayList<Point>();
+        MapSquare[][] squares = privateGameMap.getSquares();
+        for (int row = 0; row < privateGameMap.getHeight(); row++) {
+            for (int col = 0; col < privateGameMap.getWidth(); col++) {
+                MapSquare sq = squares[row][col];
+                MapSquare.DIRECTION d = sq.getDirection();
+                if (sq.getType() == MapSquare.TYPE.BUS_STOP || d == MapSquare.DIRECTION.INTERSECTION || d == MapSquare.DIRECTION.T_EAST ||
+                        d == MapSquare.DIRECTION.T_NORTH || d == MapSquare.DIRECTION.T_WEST || d == MapSquare.DIRECTION.T_SOUTH)
+                    junctions.add(new Point(row, col));
+            }
+        }
+    }
+
+    private boolean isJunction(Point p) {
+        for (Point j : junctions) {
+            if (p.equals(j)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private void findPathsOfTiles() {
         // store junction -> junction costs
         // j2jPaths
 
-        ArrayList<Point> junctions;
-
+        HashSet<Point> explored = new HashSet<Point>();
         for (int i = 0; i < junctions.size(); i++) {
             // performBFS(i);
-            Queue<Point> frontier = new Queue<Point>();
-            frontier.add(junctions.get(i));
+            Queue<Node> frontier = new LinkedList<Node>();
+            Node start = new Node(junctions.get(i), null, 3.0);
+            frontier.add(start);
             while (!frontier.isEmpty()) {
-                Point current = frontier.poll();
-                if (isJunction(current)) {
-                    addPathToJunction;
+                Node current = frontier.poll();
+                if (isJunction(current.p)) {
+                    addJ2J(i, junctions.indexOf(current.p), current.getPath());
                 } else {
-                    
+                    for (Point neighbor : neighbors(current.p)) {
+                        MapSquare sq = privateGameMap.SquareOrDefault(neighbor);
+                        if (sq == null)
+                            continue;
+                        if (sq.getIsDriveable() && isConnected(current.p, neighbor)) {
+                            double maxSpeed = 6;
+                            if (isCurve(sq)) {
+                                maxSpeed = 3;
+                            } else if(isStop(sq)) { //todo: fix, and check direction
+                                maxSpeed = 0;
+                            }
+                            double speed = Math.min(maxSpeed, current.speed + ACCELERATION);
+                            frontier.add(new Node(neighbor, current, speed));
+                        }
+                    }
                 }
             }
         }
+    }
+
+    private boolean isStop(MapSquare sq) {
+        return sq.getStopSigns() != MapSquare.NONE;
+    }
+
+    ArrayList<MapSquare.DIRECTION> ups = new ArrayList<MapSquare.DIRECTION>(Arrays.asList(new MapSquare.DIRECTION[] {
+            MapSquare.DIRECTION.T_NORTH,
+            MapSquare.DIRECTION.T_EAST,
+            MapSquare.DIRECTION.T_WEST,
+            MapSquare.DIRECTION.INTERSECTION,
+            MapSquare.DIRECTION.CURVE_NE,
+            MapSquare.DIRECTION.CURVE_NW,
+            MapSquare.DIRECTION.NORTH_SOUTH,
+            MapSquare.DIRECTION.SOUTH_UTURN
+    }));
+
+    ArrayList<MapSquare.DIRECTION> downs = new ArrayList<MapSquare.DIRECTION>(Arrays.asList(new MapSquare.DIRECTION[] {
+            MapSquare.DIRECTION.T_SOUTH,
+            MapSquare.DIRECTION.T_EAST,
+            MapSquare.DIRECTION.T_WEST,
+            MapSquare.DIRECTION.INTERSECTION,
+            MapSquare.DIRECTION.CURVE_SE,
+            MapSquare.DIRECTION.CURVE_SW,
+            MapSquare.DIRECTION.NORTH_SOUTH,
+            MapSquare.DIRECTION.NORTH_UTURN
+    }));
+
+    ArrayList<MapSquare.DIRECTION> lefts = new ArrayList<MapSquare.DIRECTION>(Arrays.asList(new MapSquare.DIRECTION[] {
+            MapSquare.DIRECTION.T_NORTH,
+            MapSquare.DIRECTION.T_SOUTH,
+            MapSquare.DIRECTION.T_WEST,
+            MapSquare.DIRECTION.INTERSECTION,
+            MapSquare.DIRECTION.CURVE_NW,
+            MapSquare.DIRECTION.CURVE_SW,
+            MapSquare.DIRECTION.EAST_WEST,
+            MapSquare.DIRECTION.EAST_UTURN
+    }));
+
+    ArrayList<MapSquare.DIRECTION> rights = new ArrayList<MapSquare.DIRECTION>(Arrays.asList(new MapSquare.DIRECTION[] {
+            MapSquare.DIRECTION.T_NORTH,
+            MapSquare.DIRECTION.T_SOUTH,
+            MapSquare.DIRECTION.T_EAST,
+            MapSquare.DIRECTION.INTERSECTION,
+            MapSquare.DIRECTION.CURVE_NE,
+            MapSquare.DIRECTION.CURVE_SE,
+            MapSquare.DIRECTION.EAST_WEST,
+            MapSquare.DIRECTION.WEST_UTURN
+    }));
+
+    public boolean canUp(Point s1) {
+        MapSquare s = privateGameMap.SquareOrDefault(s1);
+        return s.getIsDriveable() && ups.contains(s.getDirection());
+    }
+
+    public boolean canDown(Point s1) {
+        MapSquare s = privateGameMap.SquareOrDefault(s1);
+        return s.getIsDriveable() && downs.contains(s.getDirection());
+    }
+
+    public boolean canLeft(Point s1) {
+        MapSquare s = privateGameMap.SquareOrDefault(s1);
+        return s.getIsDriveable() && lefts.contains(s.getDirection());
+    }
+
+    public boolean canRight(Point s1) {
+        MapSquare s = privateGameMap.SquareOrDefault(s1);
+        return s.getIsDriveable() && rights.contains(s.getDirection());
+    }
+
+    private boolean isConnected(Point s1, Point s2) {
+        if (canUp(s1) && s2.getX() == s1.getX() && s2.getY() == s1.getY() - 1) {
+            return true;
+        }
+        if (canDown(s1) && s2.getX() == s1.getX() && s2.getY() == s1.getY() + 1) {
+            return true;
+        }
+        if (canLeft(s1) && s2.getX() == s1.getX() + 1 && s2.getY() == s1.getY()) {
+            return true;
+        }
+        if (canRight(s1) && s2.getX() == s1.getX() - 1 && s2.getY() == s1.getY()) {
+            return true;
+        }
+        return false;
+    }
+
+    private Point[] neighbors(Point p) {
+        return new Point[] {new Point(p.x+1, p.y), new Point(p.x-1, p.y), new Point(p.x, p.y-1), new Point(p.x, p.y+1)};
+    }
+
+    private void addJ2J(int i, int j, Path path) {
+        if (j2jPaths[i][j] == null) {
+            j2jPaths[i][j] = new ArrayList<Path>();
+        }
+        j2jPaths[i][j].add(path);
     }
 
     private void findPathsOfJunctions() {
         // store destination -> destination costs
         // d2dPaths
 
-        ArrayList<Point> junctions;
-
         int[][] bestCosts;
         for (int i = 0; i < junctions.size(); i++) {
             for (int j = 0; j < junctions.size(); j++) {
                 for (int k = 0; k < junctions.size(); k++) {
-                    if (bestCosts[i][k] + bestCosts[k][j] < bestCosts[i][j]) {
-                        updateBestCost(i,j);
-                    }
+//                    if (bestCosts[i][k] + bestCosts[k][j] < bestCosts[i][j]) {
+//                        updateBestCost(i,j);
+//                    }
                 }
             }
         }
@@ -330,5 +466,35 @@ public class MyPlayerBrain implements net.windward.Windwardopolis.AI.IPlayerAI {
 
         //add sort by random so no loops for can't pickup
         return pickup;
+    }
+
+    public boolean isCurve(MapSquare s) {
+        return s.getDirection() == MapSquare.DIRECTION.CURVE_NW || s.getDirection() == MapSquare.DIRECTION.CURVE_NE ||
+                s.getDirection() == MapSquare.DIRECTION.CURVE_SE || s.getDirection() == MapSquare.DIRECTION.CURVE_SW;
+    }
+
+    private class Node {
+        Point p;
+        Node previous;
+        double speed;
+
+        public Node(Point p, Node n, double s) {
+            this.p = p;
+            this.previous = n;
+            this.speed = s;
+        }
+
+        public Path getPath() {
+            Path path = new Path();
+            Node current = this;
+
+            path.cost = 0;
+            while (current != null) {
+                path.points.add(0, current.p);
+                current = current.previous;
+                path.cost += 24.0/current.speed;
+            }
+            return path;
+        }
     }
 }

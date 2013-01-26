@@ -13,10 +13,11 @@ import java.util.*;
 public class Path {
     Point start, stop;
     ArrayList<Point> points;
-    int cost;
+    double cost;
 
     public Path() {
         points = new ArrayList<Point>();
-        cost = -1;
+        cost = -1.0;
     }
+
 }
