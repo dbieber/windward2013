@@ -228,6 +228,8 @@ public class MyPlayerBrain implements net.windward.Windwardopolis.AI.IPlayerAI {
         }
     }
 
+    private Passenger nextToPickup;
+
     /**
      * Called to send an update message to this A.I. We do NOT have to send orders in response.
      *
@@ -242,58 +244,74 @@ public class MyPlayerBrain implements net.windward.Windwardopolis.AI.IPlayerAI {
         // as this app is single threaded. However, if you create worker thread(s) or respond to multiple status messages simultaneously
         // then you need to split these out and synchronize access to the saved list objects.
 
+        // where's the next intersection?
+        // what are some good people to pick up?
+        // let's figure out the path to them
+        // unless we're already driving them. then let's drop them off.
+
+
         try {
-            // bugbug - we return if not us because the below code is only for when we need a new path or our limo hit a bus stop.
-            // if you want to act on other players arriving at bus stops, you need to remove this. But make sure you use Me, not
-            // plyrStatus for the Player you are updatiing (particularly to determine what tile to start your path from).
-            if (plyrStatus != getMe()) {
-                return;
-            }
+            // bugbug - But make sure you use Me, not
+            // plyrStatus for the Player you are updating (particularly to determine what tile to start your path from).
 
             Point ptDest = null;
             java.util.ArrayList<Passenger> pickup = new java.util.ArrayList<Passenger>();
             switch (status) {
                 case UPDATE:
-                    // where's the next intersection?
-                    // what are some good people to pick up?
-                    // let's figure out the path to them
-                    // unless we're already driving them. then let's drop them off.
-
-                    return;
+                    // if the one we're looking for got picked up, then reschedule
+                    if (nextToPickup.getCar() != null) {
+                        pickup = AllPickups(plyrStatus, passengers);
+                        nextToPickup = pickup.get(0);
+                         ptDest = pickup.get(0).getLobby().getBusStop();
+                        break;
+                    }
+                    else return;
                 case NO_PATH:
                 case PASSENGER_NO_ACTION:
                     if (plyrStatus.getLimo().getPassenger() == null) {
                         pickup = AllPickups(plyrStatus, passengers);
+                        nextToPickup = pickup.get(0);
                         ptDest = pickup.get(0).getLobby().getBusStop();
-                    } else {
+                    } else { // this should probably be dump at the enarest spot
                         ptDest = plyrStatus.getLimo().getPassenger().getDestination().getBusStop();
                     }
                     break;
                 case PASSENGER_DELIVERED:
                 case PASSENGER_ABANDONED:
                     pickup = AllPickups(plyrStatus, passengers);
+                    nextToPickup = pickup.get(0);
                     ptDest = pickup.get(0).getLobby().getBusStop();
                     break;
                 case PASSENGER_REFUSED:
                     //add in random so no refuse loop
-                    for (Company cpy : getCompanies()) {
-                        if (cpy != plyrStatus.getLimo().getPassenger().getDestination()) {
-                            ptDest = cpy.getBusStop();
-                            break;
+                    double minCost = Double.POSITIVE_INFINITY;
+                    Company minCpy = null;
+                    cmp: for (Company cpy : getCompanies()) {
+                        if (cpy != getMe().getLimo().getPassenger().getDestination() && costBetween(getMe().getLimo().getMapPosition(), cpy.getBusStop()) < minCost) {
+                            // make sure no enemies there
+                            for (Passenger p : cpy.getPassengers()) {
+                                if (getMe().getLimo().getPassenger().getEnemies().contains(p)) {
+                                    continue cmp;
+                                }
+                            }
+                            minCost = costBetween(getMe().getLimo().getMapPosition(), cpy.getBusStop());
+                            minCpy = cpy;
                         }
                     }
+                    ptDest = minCpy.getBusStop();
                     break;
                 case PASSENGER_DELIVERED_AND_PICKED_UP:
                 case PASSENGER_PICKED_UP:
                     pickup = AllPickups(plyrStatus, passengers);
-                    ptDest = plyrStatus.getLimo().getPassenger().getDestination().getBusStop();
+                    nextToPickup = pickup.get(0);
+                    ptDest = getMe().getLimo().getPassenger().getDestination().getBusStop();
                     break;
                 default:
                     throw new RuntimeException("unknown status");
             }
 
             // get the path from where we are to the dest.
-            java.util.ArrayList<Point> path = CalculatePathPlus1(plyrStatus, ptDest);
+            java.util.ArrayList<Point> path = CalculatePathPlus1(getMe(), ptDest);
 
             // update our saved Player to match new settings
             if (path.size() > 0) {
@@ -320,15 +338,89 @@ public class MyPlayerBrain implements net.windward.Windwardopolis.AI.IPlayerAI {
         return path;
     }
 
+    private static class PsngrComp implements Comparator<Passenger>{
+        Player me;
+
+        public PsngrComp(Player iAmI) {
+            me = iAmI;
+        }
+
+        private int doMath(int distPickupA, int distPickupB, int distDestA, int distDestB, int valA, int valB, int enemyA, int enemyATravel, int enemyB, int enemyBTravel) {
+            final double VALSCALAR = .1;
+            final double ENEMYSCALAR = -.5;
+            final double ENEMYTRAVELSCALAR = -.2;
+            double aTotes = (distPickupA + distDestA) * (VALSCALAR*valA + ENEMYSCALAR*enemyA + ENEMYTRAVELSCALAR*enemyATravel);
+            double bTotes = (distPickupB + distDestB) * (VALSCALAR*valB + ENEMYSCALAR*enemyB + ENEMYTRAVELSCALAR*enemyBTravel);
+            if (aTotes > bTotes)
+                return 1;
+            else if (aTotes < bTotes)
+                return -1;
+            else
+                return 0;
+        }
+
+
+        public int compare(Passenger a, Passenger b) {
+            // distance to pickup
+            Point myPos = me.getLimo().getMapPosition();
+            Point pickupA = a.getLobby().getBusStop();
+            Point pickupB = b.getLobby().getBusStop();
+            int distPickupA = costBetween(myPos, pickupA);
+            int distPickupB = costBetween(myPos, pickupB);
+            // distance from pickup to destination
+            Point destA = a.getDestination().getBusStop();
+            Point destB = b.getDestination().getBusStop();
+            int distDestA = costBetween(pickupA, destA);
+            int distDestB = costBetween(pickupB, destB);
+            // value of the passenger
+            int valA = a.getPointsDelivered();
+            int valB = b.getPointsDelivered();
+            // is there currently an enemy at destination enemy travelling with goal of same destination?
+            int enemyA = 0, enemyATravel = 0;
+            int enemyB = 0, enemyBTravel = 0;
+            for (Passenger e : a.getEnemies())
+            {
+                if (e.getLobby() != null && e.getLobby().getBusStop().equals(destA))
+                    enemyA = 1;
+                else if (e.getCar() != null && e.getDestination().equals(destA))
+                    enemyATravel = 1;
+                if (enemyA == 1 && enemyATravel == 1)
+                    break;
+            }
+            for (Passenger e : b.getEnemies())
+            {
+                if (e.getLobby() != null && e.getLobby().getBusStop().equals(destB))
+                    enemyB = 1;
+                else if (e.getCar() != null && e.getDestination().equals(destB))
+                    enemyBTravel = 1;
+                if (enemyB == 1 && enemyBTravel == 1)
+                    break;
+            }
+            return doMath(distPickupA, distPickupB, distDestA, distDestB, valA, valB, enemyA, enemyATravel, enemyB, enemyBTravel);
+        }
+    }
+
     private static java.util.ArrayList<Passenger> AllPickups(Player me, Iterable<Passenger> passengers) {
         java.util.ArrayList<Passenger> pickup = new java.util.ArrayList<Passenger>();
+        java.util.PriorityQueue<Passenger> pq = new PriorityQueue<Passenger>(12, new PsngrComp(me));
 
         for (Passenger psngr : passengers) {
             if ((!me.getPassengersDelivered().contains(psngr)) && (psngr != me.getLimo().getPassenger()) && (psngr.getCar() == null) && (psngr.getLobby() != null) && (psngr.getDestination() != null))
-                pickup.add(psngr);
+                pq.add(psngr);
         }
 
-        //add sort by random so no loops for can't pickup
+        while(!pq.isEmpty())
+            pickup.add(pq.poll());
+
+        if (pickup.isEmpty()) {
+            for (Passenger psngr : passengers) {
+                if (!me.getPassengersDelivered().contains(psngr) && (psngr != me.getLimo().getPassenger()) && psngr.getCar() != null) {
+                    pickup.add(psngr);
+                    break;
+                }
+            }
+        }
+
         return pickup;
     }
 }
