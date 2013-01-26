@@ -1,8 +1,9 @@
 package net.windward.Windwardopolis.api;
 
 
-import java.awt.*;
 import org.dom4j.Element;
+
+import java.awt.*;
 public class Company
 {
 	private Company(Element elemCompany)

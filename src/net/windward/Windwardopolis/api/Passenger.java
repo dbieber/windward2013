@@ -206,13 +206,27 @@ public class Passenger {
 
             // set props based on waiting, travelling, done
             if (elemPsngrOn.attribute("status").getValue().equals("lobby")) {
+                Company findCmpy = null;
                 for (Company cmpy : companies) {
                     if (cmpy.getName().equalsIgnoreCase(elemPsngrOn.attribute("lobby").getValue()))
-                        psngrOn.setLobby(cmpy);
+                        findCmpy = cmpy;
+                }
+
+                if (psngrOn.getLobby() != findCmpy)
+                {
+                    psngrOn.setLobby(findCmpy);
+                    if (!psngrOn.getLobby().getPassengers().contains(psngrOn))
+                        psngrOn.getLobby().getPassengers().add(psngrOn);
                 }
                 psngrOn.setCar(null);
+
+
             } else if (elemPsngrOn.attribute("status").getValue().equals("travelling")) {
-                psngrOn.setLobby(null);
+                if (psngrOn.getLobby() != null)
+                {
+                    psngrOn.getLobby().getPassengers().remove(psngrOn);
+                    psngrOn.setLobby(null);
+                }
                 // psngrOn.Car set in Player update.
             } else if (elemPsngrOn.attribute("status").getValue().equals("done")) {
                 TRAP.trap();
