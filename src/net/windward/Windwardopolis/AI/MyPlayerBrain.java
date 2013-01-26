@@ -348,20 +348,71 @@ public class MyPlayerBrain implements net.windward.Windwardopolis.AI.IPlayerAI {
         j2jPaths[i][j].add(path);
     }
 
+    private void addD2D(int i, int j, Path path) {
+        if (path == null) return;
+        if (d2dPaths[i][j] == null) {
+            d2dPaths[i][j] = new ArrayList<Path>();
+        }
+        d2dPaths[i][j].add(path);
+    }
+
     private void findPathsOfJunctions() {
         // store destination -> destination costs
         // d2dPaths
 
-        int[][] bestCosts;
+        double[][] bestCosts = new double[privateGameMap.getHeight()][privateGameMap.getWidth()];
+        Path[][] bestPaths = new Path[privateGameMap.getHeight()][privateGameMap.getWidth()];
+        for (int i = 0; i < junctions.size(); i++) {
+            for (int j = 0; j < junctions.size(); j++) {
+                bestCosts[i][j] = j2jCost(i,j);
+                bestPaths[i][j] = j2jPath(i,j);
+            }
+        }
+
         for (int i = 0; i < junctions.size(); i++) {
             for (int j = 0; j < junctions.size(); j++) {
                 for (int k = 0; k < junctions.size(); k++) {
-//                    if (bestCosts[i][k] + bestCosts[k][j] < bestCosts[i][j]) {
-//                        updateBestCost(i,j);
-//                    }
+                    double glue = .2;
+                    double newCost = bestCosts[i][k] + bestCosts[k][j] + glue;
+                    if (newCost < bestCosts[i][j]) {
+                        bestCosts[i][j] = newCost;
+                        bestPaths[i][j] = joinedPath(bestPaths[i][k], bestPaths[k][j]);
+                    }
                 }
             }
         }
+
+        for (int i = 0; i < junctions.size(); i++) {
+            for (int j = 0; j < junctions.size(); j++) {
+                addD2D(i, j, bestPaths[i][j]);
+            }
+        }
+    }
+
+    private Path joinedPath(Path p1, Path p2) {
+        Path path = new Path();
+        path.cost = p1.cost + p2.cost + 0;
+        for (Point p: p1.points)
+            path.points.add(p);
+        for (Point p: p2.points)
+            path.points.add(p);
+        path.start = p1.start;
+        path.stop = p2.stop;
+        return path;
+    }
+
+    private Double j2jCost(int i, int j) {
+        if (j2jPaths[i][j] != null) {
+            return j2jPaths[i][j].get(0).cost; // TODO: avg or something.
+        }
+        return Double.POSITIVE_INFINITY;
+    }
+
+    private Path j2jPath(int i, int j) {
+        if (j2jPaths[i][j] != null) {
+            return j2jPaths[i][j].get(0); // TODO: avg or something.
+        }
+        return null;
     }
 
     /**
@@ -489,10 +540,12 @@ public class MyPlayerBrain implements net.windward.Windwardopolis.AI.IPlayerAI {
             Node current = this;
 
             path.cost = 0;
+            path.stop = p;
             while (current != null) {
                 path.points.add(0, current.p);
-                current = current.previous;
+                path.start = current.p;
                 path.cost += 24.0/current.speed;
+                current = current.previous;
             }
             return path;
         }
